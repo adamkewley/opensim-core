@@ -21,8 +21,8 @@
  * limitations under the License.                                             *
  * -------------------------------------------------------------------------- */
 
-/* Note: This code was originally developed by Realistic Dynamics Inc. 
- * Author: Frank C. Anderson 
+/* Note: This code was originally developed by Realistic Dynamics Inc.
+ * Author: Frank C. Anderson
  */
 
 
@@ -31,6 +31,7 @@
 
 #include "Logger.h"
 #include <climits>
+#include <sstream>
 #include <math.h>
 #include <string>
 #include <time.h>
@@ -58,12 +59,26 @@ using namespace OpenSim;
 using namespace std;
 
 // STATICS
-bool IO::_Scientific = false;
-bool IO::_GFormatForDoubleOutput = false;
-int IO::_Pad = 8;
-int IO::_Precision = 8;
-char IO::_DoubleFormat[] = "%16.8lf";
-bool IO::_PrintOfflineDocuments = true;
+namespace {
+    std::string MakeDoubleFormatString(unsigned pad, unsigned precision) {
+        std::stringstream ss;
+        // e.g. %16.8lf
+        ss << "%" << pad + precision << "." << precision << "lf";
+        return ss.str();
+    }
+
+    /** Specifies number of digits of padding in number output. */
+    unsigned _Pad = 8;
+
+    /** Specifies the precision of number output. */
+    unsigned _Precision = 8;
+
+    /** The output format string. */
+    std::string _DoubleFormat = MakeDoubleFormatString(_Pad, _Precision);
+
+    /** Whether offline documents should also be printed when Object::print is called. */
+    bool _PrintOfflineDocuments = true;
+}
 
 
 //=============================================================================
@@ -120,58 +135,6 @@ FixSlashesInFilePath(const std::string &path)
 //=============================================================================
 // NUMBERED OUTPUT
 //=============================================================================
-//-----------------------------------------------------------------------------
-// SCIENTIFIC
-//-----------------------------------------------------------------------------
-//_____________________________________________________________________________
-/**
- * Set whether or not output of numbers should be in scientific or float
- * format.
- *
- * @param aTrueFalse Scientific notation if true, and float if false.
- */
-void IO::
-SetScientific(bool aTrueFalse)
-{
-    _Scientific = aTrueFalse;
-    ConstructDoubleOutputFormat();
-}
-
-//_____________________________________________________________________________
-/**
- * Set whether or not output of numbers should be in scientific or float
- * format.
- *
- * @return True if scientific notation, false if float.
- */
-bool IO::
-GetScientific()
-{
-    return(_Scientific);
-}
-
-//-----------------------------------------------------------------------------
-// %g formatting for doubles
-//-----------------------------------------------------------------------------
-//_____________________________________________________________________________
-/**
- * Set whether or not output of numbers should be printed using %g.
- */
-void IO::
-SetGFormatForDoubleOutput(bool aTrueFalse)
-{
-    _GFormatForDoubleOutput = aTrueFalse;
-    ConstructDoubleOutputFormat();
-}
-
-//_____________________________________________________________________________
-/**
- */
-bool IO::
-GetGFormatForDoubleOutput()
-{
-    return(_GFormatForDoubleOutput);
-}
 
 //-----------------------------------------------------------------------------
 // PAD
@@ -191,26 +154,12 @@ GetGFormatForDoubleOutput()
 void IO::
 SetDigitsPad(int aPad)
 {
-    if(aPad<0) aPad = -1;
+    if (aPad < 0) {
+        aPad = -1;
+    }
+
     _Pad = aPad;
-    ConstructDoubleOutputFormat();
-}
-//_____________________________________________________________________________
-/**
- * Get the number of digits with which output of numbers is padded.
- * The pad number is used to set the minimum field width by the following
- * formula:
- *      width = pad + precision
- *
- * The formated output string, for example, would have the form
- *      %width.precisionlf.
- *
- * @return aPad Number of digits with which output of number is padded.
- */
-int IO::
-GetDigitsPad()
-{
-    return(_Pad);
+    _DoubleFormat = MakeDoubleFormatString(_Pad, _Precision);
 }
 
 //-----------------------------------------------------------------------------
@@ -226,76 +175,35 @@ GetDigitsPad()
 void IO::
 SetPrecision(int aPrecision)
 {
-    if(aPrecision<0) aPrecision = 0;
-    _Precision = aPrecision;
-    ConstructDoubleOutputFormat();
-}
-//_____________________________________________________________________________
-/**
- * Get the precision with which numbers are output.
- * The precision is usually simply the number of decimal places.
- *
- * @return Precision (often number of decimal places).
- */
-int IO::
-GetPrecision()
-{
-    return(_Precision);
-}
-
-//-----------------------------------------------------------------------------
-// OUTPUT FORMAT
-//-----------------------------------------------------------------------------
-//_____________________________________________________________________________
-/**
- * Get the current output format for numbers of type double.
- *
- * The format is maintained as a static variable in class IO, so any
- * changes made to the output parameters in class IO will be seen globally
- * by all classes using this method.
- *
- * The returned output format will be of the form
- *
- *      "% width.precision lf" (if not scientific)  or
- *      "% width.precision le" (if scientific),
- *
- * where the spaces have been removed and width = pad + precision.
- *
- * @return Format string for output of doubles.
- * @see SetScientific(), SetDigitsPad, SetPrecision.
- */
-const char* IO::
-GetDoubleOutputFormat()
-{
-    return(_DoubleFormat);
-}
-
-//_____________________________________________________________________________
-/**
- * Construct a valid output format for numbers of type double.
- * This method is called each time a change is made to any of the output
- * format parameters.
- *
- * @see SetScientific(), SetDigitsPad, SetPrecision.
- */
-void IO::
-ConstructDoubleOutputFormat()
-{
-    if(_GFormatForDoubleOutput) {
-        sprintf(_DoubleFormat,"%%g");
-    } else if(_Scientific) {
-        if(_Pad<0) {
-            sprintf(_DoubleFormat,"%%.%dle",_Precision);
-        } else {
-            sprintf(_DoubleFormat,"%%%d.%dle",_Pad+_Precision,_Precision);
-        }
-    } else {
-        if(_Pad<0) {
-            sprintf(_DoubleFormat,"%%.%dlf",_Precision);
-        } else {
-            sprintf(_DoubleFormat,"%%%d.%dlf",_Pad+_Precision,_Precision);
-        }
+    if (aPrecision < 0) {
+        aPrecision = 0;
     }
+
+    _Precision = aPrecision;
+    _DoubleFormat = MakeDoubleFormatString(_Pad, _Precision);
+}
+
+/**
+ * Returns a string representation of the input double.
+ *
+ * Precision of the double is dictated by `IO::SetPrecision`.
+ *
+ * @param d the double to format as a string
+ */
+std::string IO::
+FormatDouble(double d)
+{
+    /**
+     * The returned output format will be of the form
+     *
+     *      "% width.precision lf" (if not scientific)  or
+     *      "% width.precision le" (if scientific),
+     *
+     * where the spaces have been removed and width = pad + precision.
+     */
+    char outbuf[IO_STRLEN];  // swap area for string formattting
+    sprintf(outbuf, _DoubleFormat.c_str(), d);
+    return std::string{outbuf};
 }
 
 //=============================================================================
@@ -495,7 +403,7 @@ chDir(const string &aDirName)
 {
 
 #if defined __linux__ || defined __APPLE__
-    return chdir(aDirName.c_str()); 
+    return chdir(aDirName.c_str());
 #else
     return _chdir(aDirName.c_str());
 #endif
@@ -521,7 +429,7 @@ getCwd()
 //_____________________________________________________________________________
 /**
  * Get parent directory of the passed in fileName.
- * 
+ *
 */
 string IO::
 getParentDirectory(const string& fileName)
@@ -529,10 +437,10 @@ getParentDirectory(const string& fileName)
     string  result="";
 
     string::size_type dirSep = fileName.rfind('/'); // Unix/Mac dir separator
-    
+
     if (dirSep == string::npos)
         dirSep = fileName.rfind('\\'); // DOS dir separator
-    
+
     if (dirSep != string::npos) // if '_fileName' contains path information...
         result = fileName.substr(0,dirSep+1); // include trailing slashes
 
@@ -542,7 +450,7 @@ getParentDirectory(const string& fileName)
 //_____________________________________________________________________________
 /**
  * Get filename part of a passed in URI (also works if a DOS/Unix path is passed in)
- * 
+ *
 */
 string IO::
 GetFileNameFromURI(const string& aURI)
@@ -550,10 +458,10 @@ GetFileNameFromURI(const string& aURI)
     string  result=aURI;
 
     string::size_type dirSep = aURI.rfind('/'); // Unix/Mac dir separator
-    
+
     if (dirSep == string::npos)
         dirSep = aURI.rfind('\\'); // DOS dir separator
-    
+
     if (dirSep != string::npos) // if aURI contains path information...
         result = aURI.substr(dirSep+1);
 

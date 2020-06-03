@@ -21,8 +21,8 @@
  * limitations under the License.                                             *
  * -------------------------------------------------------------------------- */
 
-/* Note: This code was originally developed by Realistic Dynamics Inc. 
- * Author: Frank C. Anderson 
+/* Note: This code was originally developed by Realistic Dynamics Inc.
+ * Author: Frank C. Anderson
  */
 
 
@@ -166,7 +166,7 @@ getTime() const
 //_____________________________________________________________________________
 /**
  * Set the state values of this vector.
- * 
+ *
  * @param aT Time-stamp of the state vector.
  * @param data Array of values to set the state to.
  */
@@ -306,7 +306,7 @@ add(const SimTK::Vector_<double>& values) {
 /**
  * Add a value to a state.
  *
- * Only one state is altered.  This function was implemented so that 
+ * Only one state is altered.  This function was implemented so that
  * a value could be added to an entire column of a Storage.
  *
  * @param aN Index of state to be altered.
@@ -488,7 +488,7 @@ void StateVector::divide(const SimTK::Vector_<double>& values) {
     int i, n = values.size();
     if(n > _data.getSize())
         n = _data.getSize();
-    for(i = 0; i < n; ++i) {  
+    for(i = 0; i < n; ++i) {
         if(values[i] == 0.0)
             _data[i] = SimTK::NaN;
         else
@@ -515,7 +515,7 @@ divide(StateVector *aStateVector)
 
     // DIVIDE
     int i;
-    for(i=0;i<n;i++) {  
+    for(i=0;i<n;i++) {
         if(data[i]==0.0)    _data[i] = SimTK::NaN;
         else    _data[i] /= data[i];
     }
@@ -535,41 +535,29 @@ divide(StateVector *aStateVector)
 int StateVector::
 print(FILE *fp) const
 {
-    // CHECK FILE POINTER
-    if(fp==NULL) {
+    if (fp == nullptr) {
         log_error("StateVector.print(FILE*): null file pointer.");
-        return(-1);
+        return -1;
     }
 
-    // TIME
-    char format[IO_STRLEN];
-    sprintf(format,"%s",IO::GetDoubleOutputFormat());
-    int n=0,nTotal=0;
-    n = fprintf(fp,format,_t);
-    if(n<0) {
+    // column[0]: timestamp
+    std::string line_buf = IO::FormatDouble(_t);
+
+    // column[1..num_states]: states
+    for(size_t i = 0; i < _data.getSize(); i++) {
+        line_buf += '\t';
+        line_buf += IO::FormatDouble(_data[i]);
+    }
+
+    // end of row
+    line_buf += '\n';
+
+    // write linebuf to output fd
+    int bytes_written = fwrite(line_buf.data(), 1, line_buf.size(), fp);
+    if (bytes_written < line_buf.size()) {
         log_error("StateVector.print(FILE*): error writing to file.");
-        return(n);
-    }
-    nTotal += n;
-
-    // STATES
-    sprintf(format,"\t%s",IO::GetDoubleOutputFormat());
-    for(int i=0;i<_data.getSize();i++) {
-        n = fprintf(fp,format,_data[i]);
-        if(n<0) {
-            log_error("StateVector.print(FILE*): error writing to file.");
-            return(n);
-        }
-        nTotal += n;
+        return -1;
     }
 
-    // CARRIAGE RETURN
-    n = fprintf(fp,"\n");
-    if(n<0) {
-        log_error("StateVector.print(FILE*): error writing to file.");
-        return(n);
-    }
-    nTotal += n;
-
-    return(nTotal);
+    return bytes_written;
 }

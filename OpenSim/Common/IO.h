@@ -23,8 +23,8 @@
  * limitations under the License.                                             *
  * -------------------------------------------------------------------------- */
 
-/* Note: This code was originally developed by Realistic Dynamics Inc. 
- * Author: Frank C. Anderson 
+/* Note: This code was originally developed by Realistic Dynamics Inc.
+ * Author: Frank C. Anderson
  */
 
 
@@ -37,9 +37,7 @@
 const int IO_STRLEN = 2048;
 
 
-namespace OpenSim { 
-//=============================================================================
-//=============================================================================
+namespace OpenSim {
 /**
  * A class for performing input and output with OpenSim API.
  *
@@ -47,51 +45,20 @@ namespace OpenSim {
  * @author Frank C. Anderson
  */
 class OSIMCOMMON_API IO {
-
-//=============================================================================
-// DATA
-//=============================================================================
-private:
-    // NUMBER OUTPUT
-    /** Specifies whether number output is in scientific or float format. */
-    static bool _Scientific;
-    /** Specifies whether number output is in %g format or not. */
-    static bool _GFormatForDoubleOutput;
-    /** Specifies number of digits of padding in number output. */ 
-    static int _Pad;
-    /** Specifies the precision of number output. */
-    static int _Precision;
-    /** The output format string. */
-    static char _DoubleFormat[256];
-    /** Whether offline documents should also be printed when Object::print is called. */
-    static bool _PrintOfflineDocuments;
-
-
-//=============================================================================
-// METHODS
-//=============================================================================
 public:
     // FILE NAMES
     static char* ConstructDateAndTimeStamp();
     static std::string FixSlashesInFilePath(const std::string &path);
-    // NUMBER OUTPUT FORMAT
-    static void SetScientific(bool aTrueFalse);
-    static bool GetScientific();
-    static void SetGFormatForDoubleOutput(bool aTrueFalse);
-    static bool GetGFormatForDoubleOutput();
-    static void SetDigitsPad(int aPad);
-    static int GetDigitsPad();
-    static void SetPrecision(int aPlaces);
-    static int GetPrecision();
-    static const char*
-        GetDoubleOutputFormat();
-private:
-    static void ConstructDoubleOutputFormat();
 
-public:
+    // NUMBER OUTPUT FORMAT
+    static void SetDigitsPad(int aPad);
+    static void SetPrecision(int aPlaces);
+    static std::string FormatDouble(double d);
+
     // Object printing
     static void SetPrintOfflineDocuments(bool aTrueFalse);
     static bool GetPrintOfflineDocuments();
+
     // READ
 #ifndef SWIG
     static std::string ReadToTokenLine(std::istream &aIS,const std::string &aToken);
@@ -103,6 +70,7 @@ public:
     static std::ifstream* OpenInputFile(const std::string &aFileName,std::ios_base::openmode mode=std::ios_base::in);
     static std::ofstream* OpenOutputFile(const std::string &aFileName,std::ios_base::openmode mode=std::ios_base::out);
 #endif
+
     // Directory management
     static int makeDir(const std::string &aDirName);
     static int chDir(const std::string &aDirName);
@@ -121,11 +89,7 @@ public:
     static std::string Lowercase(const std::string &aStr);
     static std::string Uppercase(const std::string &aStr);
     static void eraseEmptyElements(std::vector<std::string>& list);
-//=============================================================================
-};  // END CLASS IO
-
-}; //namespace
-//=============================================================================
-//=============================================================================
+};
+}
 
 #endif // __IO_h__
