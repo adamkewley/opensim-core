@@ -145,6 +145,7 @@ int WrapObject::wrapPathSegment(const SimTK::State& s,
                                 const PathWrap& aPathWrap, 
                                 WrapResult& aWrapResult) const
 {
+    // approx 45 % of CPU is spent in this function for the Rajagopal model
    int return_code = noWrap;
     bool p_flag;
     Vec3 pt1(0.0);
