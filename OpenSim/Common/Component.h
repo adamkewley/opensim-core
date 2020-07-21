@@ -1573,7 +1573,7 @@ public:
 
 private:
     template<typename T, typename K>
-    const T& setCacheVariableValueGeneric(const SimTK::State& state, const K& key, T value) const
+    void setCacheVariableValueGeneric(const SimTK::State& state, const K& key, T value) const
     {
         const SimTK::DefaultSystemSubsystem& subsystem = this->getDefaultSubsystem();
         const SimTK::CacheEntryIndex idx = this->getCacheVariableIndex(key);
@@ -1602,9 +1602,9 @@ public:
      *     if this Component has not been added to a System (i.e., if initSystem has not been called)
      */
     template<typename T>
-    const T& setCacheVariableValue(const SimTK::State& state, const std::string& k, T value) const
+    void setCacheVariableValue(const SimTK::State& state, const std::string& k, T value) const
     {
-        return setCacheVariableValueGeneric<T>(state, k, std::move(value));
+        setCacheVariableValueGeneric<T>(state, k, std::move(value));
     }
 
     /**
@@ -1623,9 +1623,9 @@ public:
      *     if this Component has not been added to a System (i.e., if initSystem has not been called)
      */
     template<typename T>
-    const T& setCacheVariableValue(const SimTK::State& state, const CacheVariable<T>& cv, T value) const
+    void setCacheVariableValue(const SimTK::State& state, const CacheVariable<T>& cv, T value) const
     {
-        return setCacheVariableValueGeneric<T>(state, cv, std::move(value));
+        setCacheVariableValueGeneric<T>(state, cv, std::move(value));
     }
 
 private:
