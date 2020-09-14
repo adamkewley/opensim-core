@@ -139,20 +139,6 @@ void assertMatricesEqual(double m1[][4], SimTK::Mat44 const& m2) {
     }
 }
 
-// Copy + paste of "Legacy" implementation of WrapMath::RotateMatrixAxisAngle.
-//
-// CLEANME: this is a "bootstrapping" test that ensures a perf-optimized
-//          version of the function produces roughly similar results.
-void LegacyRotateMatrixAxisAngle(
-        double matrix[][4],
-        const SimTK::Vec3& axis,
-        double angle) {
-
-    double quat[4];
-    WrapMath::ConvertAxisAngleToQuaternion(axis, angle, quat);
-    WrapMath::RotateMatrixQuaternion(matrix, quat);
-}
-
 
 void TestRotateAxisAngle() {
     constexpr unsigned numTests = 100;
@@ -252,7 +238,7 @@ void TestRotateAxisAngle() {
             }
 
             WrapMath::RotateMatrixAxisAngle(m1, vecAx, angle);
-            LegacyRotateMatrixAxisAngle(m2, vecAx, angle);
+            WrapMath::LegacyRotateMatrixAxisAngle(m2, vecAx, angle);
 
             assertMatricesEqual(m1, m2);
         }
