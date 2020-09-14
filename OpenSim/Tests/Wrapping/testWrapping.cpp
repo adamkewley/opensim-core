@@ -286,7 +286,6 @@ void simulateModelWithCables(const string &modelFile, double finalTime);
 int main()
 {
     WrapMathTests::RunAll();
-    return 0;
     SimTK::Array_<std::string> failures;
 
     try{
