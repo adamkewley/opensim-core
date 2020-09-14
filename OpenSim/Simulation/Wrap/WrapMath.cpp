@@ -299,10 +299,32 @@ CalcDistanceSquaredPointToLine(SimTK::Vec3& point, SimTK::Vec3& linePt, SimTK::V
 void WrapMath::
 RotateMatrixAxisAngle(double matrix[][4], const SimTK::Vec3& axis, double angle)
 {
-    double quat[4];
+    double n[4][4];
+    {
+        // append a quaternion rotation to a matrix
+        double quat[4];
+        ConvertAxisAngleToQuaternion(axis, angle, quat);
+        ConvertQuaternionToMatrix(quat, n);
+    }
 
-    ConvertAxisAngleToQuaternion(axis, angle, quat);
-    RotateMatrixQuaternion(matrix, quat);
+    double tmp[4][4];
+
+    // standard row-to-column matrix multiplication
+    for (auto rhsCol = 0u; rhsCol < 4; ++rhsCol) {
+        for (auto lhsRow = 0u; lhsRow < 4; ++lhsRow) {
+            double sum = 0.0;
+            for (auto lhsCol = 0u; lhsCol < 4; ++lhsCol) {
+                sum += matrix[lhsRow][lhsCol] * n[lhsCol][rhsCol];
+            }
+            tmp[lhsRow][rhsCol] = sum;
+        }
+    }
+
+    for (auto row = 0u; row < 4; ++row) {
+        for (auto col = 0u; col < 4; ++col) {
+            matrix[row][col] = tmp[row][col];
+        }
+    }
 }
 
 /* Make a 4x4 transform matrix from a quaternion.

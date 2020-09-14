@@ -23,6 +23,7 @@
 // INCLUDE
 #include <OpenSim/OpenSim.h>
 #include <OpenSim/Auxiliary/auxiliaryTestFunctions.h>
+#include <OpenSim/Simulation/Wrap/WrapMath.h>
 
 #include "simbody/internal/CableTrackerSubsystem.h"
 #include "simbody/internal/CablePath.h"
@@ -31,10 +32,237 @@
 #include <set>
 #include <string>
 #include <iostream>
+#include <random>
 
 using namespace OpenSim;
 using namespace SimTK;
 using namespace std;
+
+namespace WrapMathTests {
+double generateRandomDouble(double min, double max) {
+    static std::default_random_engine e{std::random_device{}()};
+
+    std::uniform_real_distribution<double> dist{min, max};
+    return dist(e);
+}
+
+SimTK::Vec3 generateRandomVec(double min, double max) {
+    return SimTK::Vec3{
+        generateRandomDouble(min, max),
+        generateRandomDouble(min, max),
+        generateRandomDouble(min, max),
+    };
+}
+
+SimTK::Vec3 generateRandomUnitVec() {
+    return generateRandomVec(0.0, 1.0);
+}
+
+void randomizeRowMajor4x4Matrix(double m[][4], double min, double max) {
+    for (auto row = 0u; row < 4; ++row) {
+        for (auto col = 0u; col < 4; ++col) {
+            m[row][col] = generateRandomDouble(min, max);
+        }
+    }
+}
+
+void printRowMajor4x4Matrix(std::ostream& out, double m[][4]) {
+    out << "---" << std::endl;
+    for (auto row = 0u; row < 4; ++row) {
+        for (auto col = 0u; col < 4; ++col) {
+            out << m[row][col] << " ";
+        }
+        out << std::endl;
+    }
+    out << "---" << std::endl;
+}
+
+void printSimTkMat4(std::ostream& out, SimTK::Mat44 const& m) {
+    out << "---" << std::endl;
+    for (auto row = 0u; row < 4; ++row) {
+        SimTK::Mat44::TRow const& r = m[row];
+        for (auto col = 0u; col < 4; ++col) {
+            out << r[col] << " ";
+        }
+        out << std::endl;
+    }
+    out << "---" << std::endl;
+}
+
+bool operator!=(double m[][4], SimTK::Mat44 const& m2) {
+    for (unsigned row = 0; row < 4; ++row) {
+        SimTK::Mat44::TRow const& m2r = m2[row];
+        for (unsigned col = 0; col < 4; ++col) {
+            double expected = m2r[static_cast<int>(col)];
+            double got = m[row][col];
+
+            double diff = max(expected, got) - min(expected, got);
+
+            if (diff > 0.0000001) {
+                std::cerr << "uh oh: expected: " << expected << std::endl;
+                std::cerr << "uh oh: got     : " << got << std::endl;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void assertMatricesEqual(double m1[][4], double m2[][4]) {
+    for (unsigned row = 0; row < 4; ++row) {
+        for (unsigned col = 0; col < 4; ++col) {
+            double m1v = m1[row][col];
+            double m2v = m2[row][col];
+
+            double diff = max(m1v, m2v) - min(m1v, m2v);
+
+            if (diff > 0.0000001) {
+                std::stringstream ss;
+                ss << "matrices do not match:" << std::endl;
+                printRowMajor4x4Matrix(ss, m1);
+                printRowMajor4x4Matrix(ss, m2);
+                throw std::runtime_error{ss.str()};
+            }
+        }
+    }
+}
+
+void assertMatricesEqual(double m1[][4], SimTK::Mat44 const& m2) {
+    if (m1 != m2) {
+        std::stringstream ss;
+        ss << "matrices do not match:" << std::endl;
+        ss << "    WrapMath:" << std::endl;
+        printRowMajor4x4Matrix(ss, m1);
+        ss << "    SimTK:" << std::endl;
+        printSimTkMat4(ss, m2);
+        throw std::runtime_error{ss.str()};
+    }
+}
+
+// Copy + paste of "Legacy" implementation of WrapMath::RotateMatrixAxisAngle.
+//
+// CLEANME: this is a "bootstrapping" test that ensures a perf-optimized
+//          version of the function produces roughly similar results.
+void LegacyRotateMatrixAxisAngle(
+        double matrix[][4],
+        const SimTK::Vec3& axis,
+        double angle) {
+
+    double quat[4];
+    WrapMath::ConvertAxisAngleToQuaternion(axis, angle, quat);
+    WrapMath::RotateMatrixQuaternion(matrix, quat);
+}
+
+
+void TestRotateAxisAngle() {
+    constexpr unsigned numTests = 100;
+
+    // Rotating a vector of (0,0,0) about any axis, and about any angle, should
+    // produce a vector of (0,0,0)
+    //
+    // - The rotation API is only suitable for rotations about the origin, so
+    //   this test just ensures that nothing obviously bizzare is happening
+    {
+        for (auto i = 0u; i < numTests; ++i) {
+            double m[4][4] = {};
+            SimTK::Vec3 axis = generateRandomUnitVec();
+            double angle = generateRandomDouble(0.0, M_PI_2);
+
+            WrapMath::RotateMatrixAxisAngle(m, axis, angle);
+
+            for (auto row = 0u; row < 4; ++row) {
+                for (auto col = 0u; col < 4; ++col) {
+                    double v = m[row][col];
+                    ASSERT_EQUAL<double>(v, 0.0, SimTK::Eps);
+                }
+            }
+        }
+    }
+
+    // The result from the API should closely match the result obtained by
+    // using SimTK's matrix math
+    //
+    // - It is assumed, maybe wrongly ;), that SimTK's math functions produce
+    //   correct results, so this test just ensures that RotateMatrixAxisAngle
+    //   is roughly as sane as SimTK
+    //
+    // - Main objective of this test is just to ensure that it's *roughly*
+    //   correct. It might be that SimTK uses differerent axes, or opposite
+    //   rotation directions.
+    {
+        auto ax = ZAxis;
+        SimTK::Vec3 vecAx = {0.0, 0.0, -1.0};
+
+        for (auto i = 0u; i < numTests; ++i) {
+            double m[4][4] = {};
+            randomizeRowMajor4x4Matrix(m, -100.0, 100.0);
+
+            // The implementation does not handle the affine matrix stuff
+            // because it immediately converts the arugment to a quaternion.
+            m[0][3] = 0.0;
+            m[1][3] = 0.0;
+            m[2][3] = 0.0;
+
+            m[3][0] = 0.0;
+            m[3][1] = 0.0;
+            m[3][2] = 0.0;
+            m[3][3] = 1.0;
+
+            double angle = generateRandomDouble(0.0, M_PI_2);
+
+            Transform tt{SimTK::Rotation{angle, ax}, SimTK::Vec3{}};
+            SimTK::Mat44 t = tt.toMat44();
+            SimTK::Mat44 simtkMatrix{
+                m[0][0], m[0][1], m[0][2], m[0][3],
+                m[1][0], m[1][1], m[1][2], m[1][3],
+                m[2][0], m[2][1], m[2][2], m[2][3],
+                m[3][0], m[3][1], m[3][2], m[3][3],
+            };
+
+            SimTK::Mat44 simtkResult = simtkMatrix * t;
+            // fixups for affine matrix stuff, again
+            simtkResult.row(0)[3] = 0.0;
+            simtkResult.row(1)[3] = 0.0;
+            simtkResult.row(2)[3] = 0.0;
+
+            WrapMath::RotateMatrixAxisAngle(m, vecAx, angle);
+
+            assertMatricesEqual(m, simtkResult);
+        }
+    }
+
+    // CLEANME: bootstrapping test. The new implementation should produce
+    //          identical results to the old one. This test can be nuked
+    //          once the new implementation is fleshed out
+    {
+        SimTK::Vec3 vecAx = {0.0, 0.0, -1.0};
+
+        for (auto i = 0u; i < numTests; ++i) {
+            double angle = generateRandomDouble(0.0, M_PI_2);
+
+            double m1[4][4] = {};
+            randomizeRowMajor4x4Matrix(m1, -100.0, 100.0);
+
+            // copy input
+            double m2[4][4] = {};
+            for (auto row = 0u; row < 4; ++row) {
+                for (auto col = 0u; col < 4; ++col) {
+                    m2[row][col] = m1[row][col];
+                }
+            }
+
+            WrapMath::RotateMatrixAxisAngle(m1, vecAx, angle);
+            LegacyRotateMatrixAxisAngle(m2, vecAx, angle);
+
+            assertMatricesEqual(m1, m2);
+        }
+    }
+}
+
+void RunAll() {
+    TestRotateAxisAngle();
+}
+}
 
 class TestInfo {
 public:
@@ -57,6 +285,8 @@ void simulateModelWithCables(const string &modelFile, double finalTime);
 
 int main()
 {
+    WrapMathTests::RunAll();
+    return 0;
     SimTK::Array_<std::string> failures;
 
     try{
