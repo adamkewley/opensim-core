@@ -608,58 +608,65 @@ int WrapCylinder::wrapLine(
  * @param far_side_wrap Boolean indicating if the wrap is the long way around
  * @param aWrapResult The result of the wrapping (tangent points, etc.)
  */
-void WrapCylinder::_make_spiral_path(SimTK::Vec3& aPoint1,
-                                                 SimTK::Vec3& aPoint2,
-                                                 bool far_side_wrap,
-                                                 WrapResult& aWrapResult) const
-{
-    double x, y, t, axial_dist, theta;
-    Vec3 r1a, r2a, uu, vv, ax, axial_vec, wrap_pt;
+void WrapCylinder::_make_spiral_path(
+        SimTK::Vec3& aPoint1,
+        SimTK::Vec3& aPoint2,
+        bool far_side_wrap,
+        WrapResult& aWrapResult) const {
+
+    int iterations = 0;
     double sense = far_side_wrap ? -1.0 : 1.0;
-    double m[4][4];
-    int i, iterations = 0;
-    const double _radius = get_radius();
 
 restart_spiral_wrap:
 
     aWrapResult.wrap_pts.setSize(0);
 
     // determine the axial vector
-
+    Vec3 r1a;
+    Vec3 r2a;
+    double t;
     WrapMath::GetClosestPointOnLineToPoint(aWrapResult.r1, p0, dn, r1a, t);
     WrapMath::GetClosestPointOnLineToPoint(aWrapResult.r2, p0, dn, r2a, t);
 
+    Vec3 axial_vec;
     MAKE_3DVECTOR(r1a, r2a, axial_vec);
 
-    axial_dist = Mtx::Magnitude(3, axial_vec);
+    double axial_dist = Mtx::Magnitude(3, axial_vec);
 
-    // determine the radial angle
+    Vec3 uu;
+    Vec3 vv;
     MAKE_3DVECTOR(r1a, aWrapResult.r1, uu);
     MAKE_3DVECTOR(r2a, aWrapResult.r2, vv);
 
-    for (i = 0; i < 3; i++)
-    {
+    // determine the radial angle
+    const double _radius = get_radius();
+    for (int i = 0; i < 3; i++) {
         uu[i] /= _radius;
         vv[i] /= _radius;
     }
 
-    theta = Mtx::Angle(uu,vv);
+    double theta = Mtx::Angle(uu,vv);
 
-    if (far_side_wrap)
+    if (far_side_wrap) {
         theta = 2.0 * SimTK_PI - theta;
+    }
 
     // use Pythagoras to calculate the length of the spiral path (imaging
     // a right triangle wrapping around the surface of a cylinder)
-    x = _radius * theta;
-    y = axial_dist;
+    double x = _radius * theta;
+    double y = axial_dist;
 
     aWrapResult.wrap_path_length = sqrt(x * x + y * y);
 
     // build path segments
+    Vec3 ax;
     Mtx::CrossProduct(uu, vv, ax);
     Mtx::Normalize(3, ax, ax);
 
     Mtx::CrossProduct(ax, uu, vv);
+
+    Vec3 wrap_pt;
+    double m[4][4];
 
     m[0][0] = ax[0]; m[0][1] = ax[1]; m[0][2] = ax[2]; m[0][3] = 0.0;
     m[1][0] = uu[0]; m[1][1] = uu[1]; m[1][2] = uu[2]; m[1][3] = 0.0;
@@ -668,31 +675,55 @@ restart_spiral_wrap:
 
     // Each muscle segment on the surface of the cylinder should be
     // 0.002 meters long. This assumes the model is in meters, of course.
-    int numWrapSegments = (int) (aWrapResult.wrap_path_length / 0.002);
-    if (numWrapSegments < 1)
+    int numWrapSegments =
+            static_cast<int>(aWrapResult.wrap_path_length / 0.002);
+
+    if (numWrapSegments < 1) {
         numWrapSegments = 1;
+    }
 
-    for (i = 0; i < numWrapSegments; i++)
-    {
-        double t = (double) i / numWrapSegments;
+    for (int i = 0; i < numWrapSegments; i++) {
+        double t = static_cast<double>(i)/numWrapSegments;
 
-        _calc_spiral_wrap_point(r1a, axial_vec, m, ax, sense, t, theta, wrap_pt);
+        _calc_spiral_wrap_point(
+                    r1a,
+                    axial_vec,
+                    m,
+                    ax,
+                    sense,
+                    t,
+                    theta,
+                    wrap_pt);
 
         // adjust r1/r2 tangent points if necessary to achieve tangency with
         // the spiral path:
-        if (i == 1 && iterations < MAX_ITERATIONS)
-        {
-            bool did_adjust_r2 = false;
-            bool did_adjust_r1 = _adjust_tangent_point(aPoint1, dn, aWrapResult.r1, wrap_pt);
+        if (i == 1 && iterations < MAX_ITERATIONS) {
+            bool did_adjust_r1 = _adjust_tangent_point(
+                        aPoint1,
+                        dn,
+                        aWrapResult.r1,
+                        wrap_pt);
 
-            SimTK::Vec3 temp_wrap_pt;
+            Vec3 temp_wrap_pt;
+            _calc_spiral_wrap_point(
+                        r1a,
+                        axial_vec,
+                        m,
+                        ax,
+                        sense,
+                        1.0
+                        - t,
+                        theta,
+                        temp_wrap_pt);
 
-            _calc_spiral_wrap_point(r1a, axial_vec, m, ax, sense, 1.0 - t, theta, temp_wrap_pt);
+            bool did_adjust_r2 = _adjust_tangent_point(
+                        aPoint2,
+                        dn,
+                        aWrapResult.
+                        r2,
+                        temp_wrap_pt);
 
-            did_adjust_r2 = _adjust_tangent_point(aPoint2, dn, aWrapResult.r2, temp_wrap_pt);
-
-            if (did_adjust_r1 || did_adjust_r2)
-            {
+            if (did_adjust_r1 || did_adjust_r2) {
                 iterations++;
                 goto restart_spiral_wrap;
             }
@@ -715,29 +746,28 @@ restart_spiral_wrap:
  * @param theta The total angle of the spiral on the cylinder
  * @param wrap_pt The new point on the spiral path
  */
-void WrapCylinder::_calc_spiral_wrap_point(const SimTK::Vec3& r1a,
-                                                         const SimTK::Vec3& axial_vec,
-                                                         double m[4][4],
-                                                         const SimTK::Vec3& axis,
-                                                         double sense,
-                                                         double t,
-                                                         double theta,
-                                                         SimTK::Vec3& wrap_pt) const
-{
-    double n[4][4];
-    int i, j;
+void WrapCylinder::_calc_spiral_wrap_point(
+        const SimTK::Vec3& r1a,
+        const SimTK::Vec3& axial_vec,
+        double m[4][4],
+        const SimTK::Vec3& axis,
+        double sense,
+        double t,
+        double theta,
+        SimTK::Vec3& wrap_pt) const {
 
-    for (i = 0; i < 4; i++)
-        for (j = 0; j < 4; j++)
+    double n[4][4];
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
             n[i][j] = m[i][j];
+        }
+    }
 
     WrapMath::RotateMatrixAxisAngle(n, axis, sense * t * theta);
 
-    for (i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         double radial_component = get_radius() * n[1][i];
         double axial_component = t * axial_vec[i];
-
         wrap_pt[i] = r1a[i] + radial_component + axial_component;
     }
 }
@@ -756,75 +786,106 @@ void WrapCylinder::_calc_spiral_wrap_point(const SimTK::Vec3& r1a,
  * @param w1 A wrapping point (?)
  * @return Whether or not the point was adjusted
  */
-bool WrapCylinder::_adjust_tangent_point(SimTK::Vec3& pt1,
-                                                      SimTK::Vec3& dn,
-                                                      SimTK::Vec3& r1,
-                                                      SimTK::Vec3& w1) const
-{
-    SimTK::Vec3 pr_vec, rw_vec;
-    double alpha, omega, t;
-    int i;
-    bool did_adust = false;
+bool WrapCylinder::_adjust_tangent_point(
+        SimTK::Vec3& pt1,
+        SimTK::Vec3& dn,
+        SimTK::Vec3& r1,
+        SimTK::Vec3& w1) const {
 
+    Vec3 pr_vec;
     MAKE_3DVECTOR(pt1, r1, pr_vec);
+    Vec3 rw_vec;
     MAKE_3DVECTOR(r1, w1, rw_vec);
 
     Mtx::Normalize(3, pr_vec, pr_vec);
     Mtx::Normalize(3, rw_vec, rw_vec);
 
-    alpha = acos(Mtx::DotProduct(3, pr_vec, dn));
-    omega = acos(Mtx::DotProduct(3, rw_vec, dn));
+    double alpha = acos(Mtx::DotProduct(3, pr_vec, dn));
+    double omega = acos(Mtx::DotProduct(3, rw_vec, dn));
 
-    if (fabs(alpha - omega) > TANGENCY_THRESHOLD)
-    {
-        double p1w1_t, p1aw1a_t;
-        SimTK::Vec3 save, p1a, w1a, p1w1_int, p1aw1a_int;
+    if (fabs(alpha - omega) > TANGENCY_THRESHOLD) {
 
-        WrapMath::GetClosestPointOnLineToPoint(pt1, r1, dn, p1a, t);
-        WrapMath::GetClosestPointOnLineToPoint(w1, r1, dn, w1a, t);
 
-        WrapMath::IntersectLines(pt1, w1, p1a, w1a, p1w1_int, p1w1_t, p1aw1a_int, p1aw1a_t);
-
-        for (i = 0; i < 3; i++)
+        Vec3 p1a;
+        Vec3 w1a;
         {
+            double t;
+            WrapMath::GetClosestPointOnLineToPoint(pt1, r1, dn, p1a, t);
+            WrapMath::GetClosestPointOnLineToPoint(w1, r1, dn, w1a, t);
+        }
+
+        Vec3 p1aw1a_int;
+        {
+            Vec3 p1w1_int;
+            double p1w1_t;
+            double p1aw1a_t;
+            WrapMath::IntersectLines(
+                        pt1,
+                        w1,
+                        p1a,
+                        w1a,
+                        p1w1_int,
+                        p1w1_t,
+                        p1aw1a_int,
+                        p1aw1a_t);
+        }
+
+        Vec3 save;
+        for (int i = 0; i < 3; i++) {
             save[i] = r1[i];
             r1[i] += 1.5 * (p1aw1a_int[i] - r1[i]);
         }
 
-        did_adust = true;
+        // did make an adjustment
+        return true;
     }
 
-    return did_adust;
+    // did not make an adjustment
+    return false;
 }
 
 // Implement generateDecorations by WrapCylinder to replace the previous out of place implementation 
 // in ModelVisualizer
-void WrapCylinder::generateDecorations(bool fixed, const ModelDisplayHints& hints, const SimTK::State& state,
-    SimTK::Array_<SimTK::DecorativeGeometry>& appendToThis) const 
-{
+void WrapCylinder::generateDecorations(
+        bool fixed,
+        const ModelDisplayHints& hints,
+        const SimTK::State& state,
+        SimTK::Array_<SimTK::DecorativeGeometry>& appendToThis) const {
 
     Super::generateDecorations(fixed, hints, state, appendToThis);
-    if (!fixed) return;
 
-    if (hints.get_show_wrap_geometry()) {
-        const Appearance& defaultAppearance = get_Appearance();
-        if (!defaultAppearance.get_visible()) return;
-        const Vec3 color = defaultAppearance.get_color();
-
-        SimTK::Transform ztoy;
-        // Make transform that takes z axis to y axis due to different
-        // assumptions between DecorativeCylinder aligned with y  and
-        // WrapCylinder aligned with z
-        ztoy.updR().setRotationFromAngleAboutX(SimTK_PI / 2);
-
-        const auto X_BP = calcWrapGeometryTransformInBaseFrame();
-        SimTK::Transform X_BP_ztoy = X_BP*ztoy;
-        appendToThis.push_back(
-            SimTK::DecorativeCylinder(get_radius(),
-                get_length() / 2)
-            .setTransform(X_BP_ztoy).setResolution(2.0)
-            .setColor(color).setOpacity(defaultAppearance.get_opacity())
-            .setScale(1).setRepresentation(defaultAppearance.get_representation())
-            .setBodyId(getFrame().getMobilizedBodyIndex()));
+    if (!fixed) {
+        return;
     }
+
+    if (!hints.get_show_wrap_geometry()) {
+        return;
+    }
+
+    const Appearance& defaultAppearance = get_Appearance();
+
+    if (!defaultAppearance.get_visible()) {
+        return;
+    }
+
+    const Vec3 color = defaultAppearance.get_color();
+
+    SimTK::Transform ztoy;
+    // Make transform that takes z axis to y axis due to different
+    // assumptions between DecorativeCylinder aligned with y  and
+    // WrapCylinder aligned with z
+    ztoy.updR().setRotationFromAngleAboutX(SimTK_PI / 2);
+
+    const auto X_BP = calcWrapGeometryTransformInBaseFrame();
+    SimTK::Transform X_BP_ztoy = X_BP*ztoy;
+
+    appendToThis.push_back(
+        SimTK::DecorativeCylinder(get_radius(), get_length() / 2)
+            .setTransform(X_BP_ztoy)
+            .setResolution(2.0)
+            .setColor(color)
+            .setOpacity(defaultAppearance.get_opacity())
+            .setScale(1)
+            .setRepresentation(defaultAppearance.get_representation())
+            .setBodyId(getFrame().getMobilizedBodyIndex()));
 }
