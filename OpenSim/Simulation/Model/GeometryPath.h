@@ -30,6 +30,7 @@
 #include "PathPointSet.h"
 #include <OpenSim/Simulation/Wrap/PathWrapSet.h>
 #include <OpenSim/Simulation/MomentArmSolver.h>
+#include "Simbody.h"
 
 
 #ifdef SWIG
@@ -86,6 +87,7 @@ private:
     // but we cannot simply use a unique_ptr because we want the pointer to be
     // cleared on copy.
     SimTK::ResetOnCopy<std::unique_ptr<MomentArmSolver> > _maSolver;
+    SimTK::ResetOnCopy<std::unique_ptr<SimTK::CablePath>> _cable;
 
     mutable CacheVariable<double> _lengthCV;
     mutable CacheVariable<double> _speedCV;
@@ -221,6 +223,7 @@ protected:
             override;
 
     void extendFinalizeFromProperties() override;
+    void extendRealizeTopology(SimTK::State& st) const override;
 
 private:
 

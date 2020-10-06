@@ -30,6 +30,7 @@
 #include "PointForceDirection.h"
 #include <OpenSim/Simulation/Wrap/PathWrap.h>
 #include "Model.h"
+#include <OpenSim/Simulation/Wrap/WrapCylinder.h>
 
 //=============================================================================
 // STATICS
@@ -107,6 +108,69 @@ void GeometryPath::extendConnectToModel(Model& aModel)
     // We consider this cache entry valid any time after it has been created
     // and first marked valid, and we won't ever invalidate it.
     this->_colorCV = addCacheVariable("color", get_Appearance().get_color(), SimTK::Stage::Topology);
+}
+
+void GeometryPath::extendRealizeTopology(SimTK::State& st) const {
+    Super::extendRealizeTopology(st);
+
+    const PathPointSet& points = get_PathPointSet();
+    int numPoints = points.getSize();
+
+    assert(numPoints >= 2);
+
+    AbstractPathPoint& p1 = points[0];
+    AbstractPathPoint& p2 = points[numPoints - 1];
+
+    // HACK: need to mutate model's cable subsystem at this point in time
+    //       because it's when we know the locations of P1 and P2
+    {
+        auto& mutableThis = const_cast<GeometryPath&>(*this);
+        mutableThis._cable = std::unique_ptr<SimTK::CablePath>{new SimTK::CablePath{
+            mutableThis._model->updCableSubsystem(),
+            p1.getParentFrame().getMobilizedBody(),
+            p1.getLocation(st),
+            p2.getParentFrame().getMobilizedBody(),
+            p2.getLocation(st),
+        }};
+    }
+
+    // HACK: just insert any wrap cylinders into SimTK's cable subsystem
+    const PathWrapSet& pws = this->get_PathWrapSet();
+    for (int i = 0; i < pws.getSize(); ++i) {
+        const PathWrap& pw = pws[i];
+        const WrapObject* wo = pw.getWrapObject();
+
+        const auto* p = dynamic_cast<const WrapCylinder*>(wo);
+        if (p == nullptr) {
+            continue;  // this hack only applies to cylinders
+        }
+
+        const WrapCylinder& cylinder = *p;
+
+        auto lolframesarefunlol = [&]() {
+            // B: base Frame (Body or Ground)
+            // F: PhysicalFrame that this WrapGeometry is connected to
+            // P: the frame defined (relative to F) by the location and orientation
+            //    properties.
+            const SimTK::Transform& X_BF = wo->getFrame().findTransformInBaseFrame();
+            const auto& X_FP = wo->getTransform();
+            const auto X_BP = X_BF * X_FP;
+            return X_BP;
+        };
+
+        // HACK: just heap-leak the cylinder for now: it needs to be allocated
+        //       correctly *after* it actually works.
+        /*auto* obst = new CableObstacle::Surface{
+            *this->_cable,
+            wo->getFrame().getMobilizedBody(),
+            lolframesarefunlol(),
+            SimTK::ContactGeometry::Cylinder{cylinder.get_radius()},
+        };
+        // don't actually use the wrapping cylinder, because the cable
+        // implementation sucks and will explode whenever a surface normal
+        // is colinear with a point-to-surface vector (or some shit like that)
+        obst->setDisabledByDefault(true);*/
+    }
 }
 
  void GeometryPath::extendInitStateFromProperties(SimTK::State& s) const
