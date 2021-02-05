@@ -1319,6 +1319,20 @@ public:
     SimTK::Vector getStateVariableValues(const SimTK::State& state) const;
 
     /**
+     * Append the Y indices of all state variables owned by this component to
+     * `appendOut`.
+     *
+     * @param state the state from which to get the indices
+     *
+     * @param appendOut an outparam which will have the y indices appended to
+     *                  it
+     * @throws ComponentHasNoSystem if this component has not been added to a
+     *                              System (i.g. if initSystem has not been called)
+     */
+    void getStateVariableYIndices(const SimTK::State& state,
+                                  std::vector<SimTK::SystemYIndex>& appendOut) const;
+
+    /**
      * %Set all values of the state variables allocated by this Component.
      * Includes state variables allocated by its subcomponents. Note, this
      * method simply sets the values on the input State. If other conditions

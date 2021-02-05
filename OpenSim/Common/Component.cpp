@@ -943,6 +943,59 @@ SimTK::Vector Component::
     return stateVariableValues;
 }
 
+void Component::getStateVariableYIndices(const SimTK::State& state,
+                                         std::vector<SimTK::SystemYIndex>& appendOut) const {
+
+    OPENSIM_THROW_IF_FRMOBJ(!hasSystem(), ComponentHasNoSystem);
+
+    int nsv = getNumStateVariables();
+
+    // if the StateVariables are invalid (see above) rebuild the list
+    if (!isAllStatesVariablesListValid()) {
+        _statesAssociatedSystem.reset(&getSystem());
+        _allStateVariables.clear();
+        _allStateVariables.resize(nsv);
+        Array<std::string> names = getStateVariableNames();
+        for (int i = 0; i < nsv; ++i)
+            _allStateVariables[i].reset(traverseToStateVariable(names[i]));
+    }
+
+    for (const ReferencePtr<const StateVariable>& sv : _allStateVariables) {
+
+        // sane case: the state variable correctly returns its Y index
+        {
+            SystemYIndex yi = sv->getSystemYIndex();
+            if (yi != SimTK::InvalidIndex) {
+                appendOut.push_back(yi);
+                continue;
+            }
+        }
+
+        // insane case: the state variable doesn't return its Y index.
+        //
+        // if it's an AddedStateVariable, `getVarIndex` it returns the Z index, which can be
+        // used to compute the Y index
+        {
+            AddedStateVariable const* asv = dynamic_cast<AddedStateVariable const*>(sv.get());
+            if (asv) {
+                ZIndex zi{asv->getVarIndex()};
+                int nQ = state.getNQ();
+                int nU = state.getNU();
+
+                SystemYIndex yi{nQ + nU + zi};
+                appendOut.push_back(yi);
+            }
+        }
+
+        // other insane, but unhandled, cases:
+        //
+        // - it's a Coordinate::CoordinateStateVariable that holds a MobilizerQIndex
+        // - it's a Coordinate::SpeedStateVariable, which holds a MobilizerQIndex but uses
+        //   it as a U index (yes, lol)
+        // - these can't be bodged because they are private inner classes.
+    }
+}
+
 // Set all values of the state variables allocated by this Component. Includes
 // state variables allocated by its subcomponents.
 void Component::
