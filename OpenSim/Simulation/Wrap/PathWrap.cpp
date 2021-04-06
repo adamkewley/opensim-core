@@ -84,37 +84,89 @@ void PathWrap::extendConnectToModel(Model& model)
     Super::extendConnectToModel(model);
 
     _path = dynamic_cast<const GeometryPath*>(&getOwner());
-    std::string msg = "PathWrap '" + getName()
-        + "' must have a GeometryPath as its owner.";
-    OPENSIM_THROW_IF(_path == nullptr, Exception, msg);
 
-    ComponentList<const PhysicalFrame> bodiesList =
-        model.getComponentList<PhysicalFrame>();
-    for (ComponentList<PhysicalFrame>::const_iterator it = bodiesList.begin();
-            it != bodiesList.end(); ++it) {
-        const WrapObject* wo = it->getWrapObject(getWrapObjectName());
-        if (wo) {
-            _wrapObject = wo;
-            updWrapPoint1().setParentFrame(wo->getFrame());
-            updWrapPoint1().setWrapObject(wo);
-            updWrapPoint2().setParentFrame(wo->getFrame());
-            updWrapPoint2().setWrapObject(wo);
-            break;
+    if (_path == nullptr) {
+        std::stringstream ss;
+        ss << "PathWrap '" << getName()
+           << "' must has a GeometryPath as its owner.";
+        OPENSIM_THROW(Exception, std::move(ss).str());
+    }
+
+    // assign the wrap object from the specified wrap object name
+    {
+        std::string const& woName = getWrapObjectName();
+        bool found = false;
+
+        for (auto const& wo : model.getComponentList<OpenSim::WrapObject>()) {
+            if (wo.getName() == woName) {
+                _wrapObject = &wo;
+                updWrapPoint1().setParentFrame(wo.getFrame());
+                updWrapPoint1().setWrapObject(&wo);
+                updWrapPoint2().setParentFrame(wo.getFrame());
+                updWrapPoint2().setWrapObject(&wo);
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            std::stringstream ss;
+            ss << "Cannot connect PathWrap '" << getName()
+               << "' to the wrap object '" << woName
+               << "': the specified wrap object could not be found in the "
+                  "model";
+            OPENSIM_THROW(Exception, std::move(ss).str());
         }
     }
 
-    if (get_method() == "hybrid" || get_method() == "Hybrid" || get_method() == "HYBRID")
-        _method = hybrid;
-    else if (get_method() == "midpoint" || get_method() == "Midpoint" || get_method() == "MIDPOINT")
-        _method = midpoint;
-    else if (get_method() == "axial" || get_method() == "Axial" || get_method() == "AXIAL")
-        _method = axial;
-    else if (get_method() == "Unassigned") {  // method was not specified in wrap object definition; use default
-        _method = hybrid;
-        upd_method() = "hybrid";
-    } else {  // method was specified incorrectly in wrap object definition; throw an exception
-        string errorMessage = "Error: wrapping method for wrap object " + getName() + " was either not specified, or specified incorrectly.";
-        throw Exception(errorMessage);
+    // assign _method from the specified method name string
+    {
+        static const std::unordered_map<std::string,
+                OpenSim::PathWrap::WrapMethod>
+                lut = {
+                        {"hybrid", OpenSim::PathWrap::hybrid},
+                        {"Hybrid", OpenSim::PathWrap::hybrid},
+                        {"HYBRID", OpenSim::PathWrap::hybrid},
+                        {"midpoint", OpenSim::PathWrap::midpoint},
+                        {"Midpoint", OpenSim::PathWrap::midpoint},
+                        {"MIDPOINT", OpenSim::PathWrap::midpoint},
+                        {"axial", OpenSim::PathWrap::axial},
+                        {"Axial", OpenSim::PathWrap::axial},
+                        {"AXIAL", OpenSim::PathWrap::axial},
+                };
+
+        // edge-case: the method name isn't specified
+        if (get_method().empty()) {
+            std::stringstream ss;
+            ss << "No method name specified for PathWrap '" << getName()
+               << "': must be one of: ";
+            const char* prefix = "'";
+            for (const auto& e : lut) {
+                ss << prefix << e.second << '\'';
+                prefix = ", '";
+            }
+            OPENSIM_THROW(Exception, std::move(ss).str());
+        }
+
+        // edge-case: "Unassigned" is specified
+        if (get_method() == "Unassigned") { upd_method() = "hybrid"; }
+
+        // normal-case: something was specified: it should be in the LUT
+        auto it = lut.find(get_method());
+
+        if (it == lut.end()) {
+            std::stringstream ss;
+            ss << "The method name '" << get_method() << "' for PathWrap '"
+               << getName() << "' is invalid. Allowed values are: ";
+            const char* prefix = "'";
+            for (auto const& e : lut) {
+                ss << prefix << e.second << '\'';
+                prefix = ", '";
+            }
+            OPENSIM_THROW(Exception, std::move(ss).str());
+        }
+
+        _method = it->second;
     }
 }
 
