@@ -27,11 +27,44 @@
 #include "PathWrap.h"
 #include <OpenSim/Simulation/Model/Model.h>
 
+#include <array>
+
 //=============================================================================
 // STATICS
 //=============================================================================
 using namespace std;
 using namespace OpenSim;
+
+static constexpr std::array<const char*, 3> wrapMethod2WrapName = { "hybrid", "midpoint", "axial" };
+static_assert(static_cast<size_t>(OpenSim::PathWrap::hybrid) == 0);
+static_assert(static_cast<size_t>(OpenSim::PathWrap::midpoint) == 1);
+static_assert(static_cast<size_t>(OpenSim::PathWrap::axial) == 2);
+
+static const char* wrapMethodToString(OpenSim::PathWrap::WrapMethod method) {
+    SimTK_ASSERT(static_cast<size_t>(method) < wrapMethod2WrapName.size());
+    return wrapMethod2WrapName[static_cast<size_t>(method)];
+}
+
+static void appendAcceptedWrapNames(std::ostringstream& ss) {
+    const char* prefix = "'";
+    for (const auto& name : wrapmethod2wrapname_strict) {
+        ss << name << '\'';
+        prefix = ", '";
+    }
+}
+
+static const std::unordered_map<std::string, OpenSim::PathWrap::WrapMethod>
+    wrapName2WrapMethod = {
+        {"hybrid", OpenSim::PathWrap::hybrid},
+        {"Hybrid", OpenSim::PathWrap::hybrid},
+        {"HYBRID", OpenSim::PathWrap::hybrid},
+        {"midpoint", OpenSim::PathWrap::midpoint},
+        {"Midpoint", OpenSim::PathWrap::midpoint},
+        {"MIDPOINT", OpenSim::PathWrap::midpoint},
+        {"axial", OpenSim::PathWrap::axial},
+        {"Axial", OpenSim::PathWrap::axial},
+        {"AXIAL", OpenSim::PathWrap::axial},
+    };
 
 //=============================================================================
 // CONSTRUCTOR(S) AND DESTRUCTOR
@@ -73,11 +106,10 @@ void PathWrap::setNull()
 void PathWrap::constructProperties()
 {
     constructProperty_wrap_object("");
-    constructProperty_method("hybrid");
+    constructProperty_method(wrapMethodToString(WrapMethod::hybrid));
     OpenSim::Array<int> range(-1, 2);
     constructProperty_range(range);
 }
-
 
 void PathWrap::extendConnectToModel(Model& model)
 {
@@ -87,16 +119,16 @@ void PathWrap::extendConnectToModel(Model& model)
 
     if (_path == nullptr) {
         std::stringstream ss;
-        ss << "PathWrap '" << getName()
-           << "' must has a GeometryPath as its owner.";
+        ss << "PathWrap '" << getAbsolutePathString()
+           << "' must have a GeometryPath as its owner.";
         OPENSIM_THROW(Exception, std::move(ss).str());
     }
 
     // assign the wrap object from the specified wrap object name
     {
         std::string const& woName = getWrapObjectName();
-        bool found = false;
 
+        bool found = false;
         for (auto const& wo : model.getComponentList<OpenSim::WrapObject>()) {
             if (wo.getName() == woName) {
                 _wrapObject = &wo;
@@ -111,58 +143,40 @@ void PathWrap::extendConnectToModel(Model& model)
 
         if (!found) {
             std::stringstream ss;
-            ss << "Cannot connect PathWrap '" << getName()
+            ss << "Cannot connect PathWrap '" << getAbsolutePathString()
                << "' to the wrap object '" << woName
-               << "': the specified wrap object could not be found in the "
-                  "model";
+               << "': the specified wrap object could not be found in the model";
             OPENSIM_THROW(Exception, std::move(ss).str());
         }
     }
 
     // assign _method from the specified method name string
     {
-        static const std::unordered_map<std::string,
-                OpenSim::PathWrap::WrapMethod>
-                lut = {
-                        {"hybrid", OpenSim::PathWrap::hybrid},
-                        {"Hybrid", OpenSim::PathWrap::hybrid},
-                        {"HYBRID", OpenSim::PathWrap::hybrid},
-                        {"midpoint", OpenSim::PathWrap::midpoint},
-                        {"Midpoint", OpenSim::PathWrap::midpoint},
-                        {"MIDPOINT", OpenSim::PathWrap::midpoint},
-                        {"axial", OpenSim::PathWrap::axial},
-                        {"Axial", OpenSim::PathWrap::axial},
-                        {"AXIAL", OpenSim::PathWrap::axial},
-                };
-
         // edge-case: the method name isn't specified
         if (get_method().empty()) {
             std::stringstream ss;
-            ss << "No method name specified for PathWrap '" << getName()
+            ss << "No method name specified for PathWrap '" << getAbsolutePathString()
                << "': must be one of: ";
-            const char* prefix = "'";
-            for (const auto& e : lut) {
-                ss << prefix << e.second << '\'';
-                prefix = ", '";
-            }
+            appendAcceptedWrapNames(ss);
+
             OPENSIM_THROW(Exception, std::move(ss).str());
         }
 
-        // edge-case: "Unassigned" is specified
-        if (get_method() == "Unassigned") { upd_method() = "hybrid"; }
+        // edge-case: "Unassigned" is specified: the implementation
+        // should choose a reasonable default
+        if (get_method() == "Unassigned") {
+            upd_method() = wrapMethodToString(WrapMethod::hybrid);
+        }
 
         // normal-case: something was specified: it should be in the LUT
-        auto it = lut.find(get_method());
+        auto it = wrapName2WrapMethod.find(get_method());
 
-        if (it == lut.end()) {
+        if (it == wrapName2WrapMethod.end()) {
             std::stringstream ss;
             ss << "The method name '" << get_method() << "' for PathWrap '"
-               << getName() << "' is invalid. Allowed values are: ";
-            const char* prefix = "'";
-            for (auto const& e : lut) {
-                ss << prefix << e.second << '\'';
-                prefix = ", '";
-            }
+               << getAbsolutePathString() << "' is invalid. Allowed values are: ";
+            appendAcceptedWrapNames(ss);
+
             OPENSIM_THROW(Exception, std::move(ss).str());
         }
 
@@ -217,14 +231,6 @@ void PathWrap::setWrapObject(WrapObject& aWrapObject)
 
 void PathWrap::setMethod(WrapMethod aMethod)
 {
-    if (aMethod == axial) {
-        _method = axial;
-        upd_method() = "axial";
-    } else if (aMethod == midpoint) {
-        _method = midpoint;
-        upd_method() = "midpoint";
-    } else if (aMethod == hybrid) {
-        _method = hybrid;
-        upd_method() = "hybrid";
-    }
+    _method = aMethod;
+    upd_method() = wrapMethodToString(aMethod);
 }
